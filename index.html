@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>截图软件主界面</title>
+    <style>
+      html, body {overflow: hidden;}
+      body {-webkit-app-region: drag;}
+      html, body, ul, li {padding: 0; margin: 0;}
+      .items {height: 30px; line-height: 30px; width: 90px; overflow: hidden; padding: 4px; overflow: hidden}
+      .items li {-webkit-app-region: no-drag; border-radius: 4px; width: 40px; margin: 0 1px; height: 30px; float: left; text-align: center; line-height: 30px; list-style: none;  cursor: pointer}
+      .items li:hover {background: #000; color: #fff;}
+      .icon {display: inline-block;}
+      #capture .icon {top: 0px; left: -4px; border-radius: 0 0 3px 0; position: relative; width: 15px; height: 15px; border-right: 2px solid #000; border-bottom: 2px solid #000}
+      #capture .icon:before {content: ''; border-radius: 3px 0 0 0; position: absolute; top: 8px; left: 8px; width: 15px; height: 15px; border-top: 2px solid #000; border-left: 2px solid #000}
+      .items #capture:hover .icon,
+      .items #capture:hover .icon:before {border-color: #fff}
+      #close .icon {transform-origin: 50% 50%; transform: rotate(45deg); top: -6px; left: 0px; position: relative; width: 8px; height: 8px; border-right: 2px solid #000; border-bottom: 2px solid #000}
+      #close .icon:before {content: ''; position: absolute; top: 8px; left: 8px; width: 8px; height: 8px; border-top: 2px solid #000; border-left: 2px solid #000}
+      .items #close:hover .icon,
+      .items #close:hover .icon:before {border-color: #fff}
+    </style>
+  </head>
+  <body>
+  
+<ul class="items">
+  <li id="capture"><b class="icon"></b></li>
+  <li id="close"><b class="icon"></b></li>
+</ul>
+    
+    <script>
+      var w = screen.width,
+        h = screen.height,
+        BrowserWindow = require('electron').remote.BrowserWindow
+      document.getElementById('capture').addEventListener('click', function () {
+        getImg()
+        ipc.send('create-sub-window', [w, h])
+      })
+      
+      document.getElementById('close').addEventListener('click', function () {
+        ipc.send('close')
+      })
+      
+      function getImg() {
+        var desktopCapturer = require('electron').desktopCapturer
+
+        desktopCapturer.getSources({types: ['screen'], thumbnailSize: {width: w, height: h}}, function(error, sources) {
+          if (error) throw error;
+          localStorage['img'] = sources[0].thumbnail.toDataURL()
+        });
+      }
+      
+      var ipc = require('electron').ipcRenderer;
+      ipc.on('global-shortcut-quit', function (arg) {
+        var event = new MouseEvent('click');
+        document.getElementById('close').dispatchEvent(event);
+      });
+      ipc.on('global-shortcut-capture', function (arg) {
+        var event = new MouseEvent('click');
+        document.getElementById('capture').dispatchEvent(event);
+      });
+    </script>
+  </body>
+</html>

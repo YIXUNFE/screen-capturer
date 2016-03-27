@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>test</title>
+    <style>
+      body {-webkit-app-region: no-drag;}
+      html, body {padding: 0; margin: 0; width: 100%; height: 100%; overflow: hidden}
+      canvas {width: 100%; height: 100%; display: block}
+      img {display: none}
+      #ctrl {display: block; backgroud: rgba(255, 255, 255, 0.6); font-size: 20px; position: absolute; z-index: 2; left: 50%; margin-left: -75px; bottom: 0; width: 150px; height: 40px; line-height: 40px}
+      .opt {width: 50px; height: 40px; float: left; text-align: center; cursor: pointer; border-radius: 4px}
+      .opt:hover {background: #000; color: #fff}
+      .cuted #ctrl {opacity: 0.6}
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <div id="ctrl"><div class="opt" id="ok">✓ </div><div class="opt" id="save">↯</div><div class="opt" id="cancel">✗</div></div>
+    <script>
+      var imgData = localStorage['img'],
+        cutImgData = null,
+        ipc = require('electron').ipcRenderer
+      
+      var okBtn = document.getElementById('ok'),
+        saveBtn = document.getElementById('save'),
+        cancelBtn = document.getElementById('cancel'),
+        canvas = document.getElementById('canvas')
+      
+      okBtn.addEventListener('click', ok)
+      saveBtn.addEventListener('click', save)
+      cancelBtn.addEventListener('click', cancel)
+      
+      function ok () {
+        cutImgData =  app.getCutData() || {
+          x: 0, 
+          y: 0, 
+          width: w,
+          height: h
+        }
+        cut()
+      }
+      
+      function save () {
+        cutImgData = app.getCutData() || {
+          x: 0, 
+          y: 0, 
+          width: w,
+          height: h
+        }
+        saveToFS()
+      }
+      
+      function cancel () {
+        cutImgData = app.getCutData()
+        cutImgData ? reset() : close()
+      }
+      
+      function close () {
+        //window.close()
+        ipc.send('close-subwindow')
+      }
+      
+      function reset () {
+        app.reset()
+      }
+      
+      function cut () {
+        document.getElementById('ctrl').style.display = 'none'
+        ipc.send('cut', cutImgData)
+      }
+      
+      function saveToFS () {
+        document.getElementById('ctrl').style.display = 'none'
+        ipc.send('save-to-fs', cutImgData)
+      }
+      
+      //canvas cut image handler
+      'use strict'
+      var app = (function () {
+        var canvas = document.getElementById('canvas'),
+          ctx = canvas.getContext('2d'),
+          w = document.body.clientWidth,
+          h = document.body.clientHeight
+        canvas.width = w
+        canvas.height = h
+        ctx.fillStyle = '#000'
+        
+        var shadowCanvas = document.createElement('canvas'),
+          sctx = shadowCanvas.getContext('2d')
+        shadowCanvas.width = w
+        shadowCanvas.height = h
+        
+        var shadowCanvas2 = document.createElement('canvas'),
+          sctx2 = shadowCanvas2.getContext('2d')
+        shadowCanvas2.width = w
+        shadowCanvas2.height = h
+        sctx2.fillStyle = 'rgba(0, 0, 0, 0.6)'
+        
+        var img = new Image()
+        function loaded () {
+          sctx.drawImage(img, 0, 0)
+          img.onload = null
+          img = null
+          draw()
+          run()
+        }
+        img.onload = loaded
+        img.src = imgData
+        
+        function drawOriginImage () {
+          ctx.clearRect(0, 0, w, h)
+          ctx.drawImage(shadowCanvas, 0, 0)
+        }
+        
+        /////////////////////
+        
+        var isTouched = false, startX, startY, endX, endY, isClean = true
+        canvas.addEventListener('mousedown', start)
+        document.addEventListener('mousemove', move)
+        document.addEventListener('mouseup', end)
+        
+        function start (e) {
+          isTouched = true
+          isClean = false
+          startX = endX = e.clientX
+          startY = endY = e.clientY
+        }
+        
+        function move (e) {
+          if (!isTouched) {return}
+          endX = e.clientX
+          endY = e.clientY
+        }
+        
+        function end (e) {
+          if (!isTouched) {return}
+          endX = e.clientX
+          endY = e.clientY
+          isTouched = false
+        }
+        
+        function drawCurRect () {
+          if (isClean) {return}
+          sctx2.clearRect(0, 0, w, h)
+          sctx2.rect(0, 0, w, h)
+          sctx2.fill()
+          sctx2.clearRect(startX, startY, endX - startX, endY - startY)
+          ctx.drawImage(shadowCanvas2, 0, 0)
+        }
+        
+        //////////////
+        
+        function draw () {
+          drawOriginImage()
+          drawCurRect()
+        }
+        
+        //////////////
+        
+        var frameTimer = null
+        function run () {
+          frameTimer = requestAFrame(function () {
+            if (isTouched && ftpHandler.check()) {
+              draw()
+            }
+            run()
+          })
+        }
+        
+        function requestAFrame (fn) {
+          return (window.requestAnimationFrame ||
+          window.webkitRequestAnimationFrame ||
+          window.mozRequestAnimationFrame ||
+          window.oRequestAnimationFrame ||
+          setTimeout)(fn)
+        }
+        
+        function cancelAFrame (id) {
+          return (window.cancelAnimationFrame ||
+          window.webkitCancelAnimationFrame ||
+          window.mozCancelAnimationFrame ||
+          window.oCancelAnimationFrame ||
+          clearTimeout)(id)
+        }
+        
+        var ftpHandler = {
+          lastTime: 0,
+          check: function (fps) {
+            var time = +new Date(),
+                result = false
+            fps = fps || 60
+            if (!this.lastTime) {
+              this.lastTime = time
+            } else {
+              if (time - this.lastTime >= 1000 / fps) {
+                this.lastTime = time
+                result = true
+              }
+            }
+            return result
+          }
+        }
+        
+        var app = {
+          getCutData: function () {
+            if (isClean) {
+              return null
+            } else {
+              var x, y, width, height
+              width = Math.abs(startX - endX)
+              height = Math.abs(startY - endY)
+              x = Math.min(startX, endX)
+              y = Math.min(startY, endY)
+              return {
+                x: x, 
+                y: y, 
+                width: width,
+                height: height
+              }
+            }
+          },
+          reset: function () {
+            isClean = true
+            draw()
+          }
+        }
+        
+        return app
+      }())
+      
+    </script>
+  </body>
+</html>
